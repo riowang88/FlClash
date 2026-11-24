@@ -54,7 +54,13 @@ func NewServer(svc *Service) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(webFS, "web")
-	mux.Handle("/", http.FileServerFS(sub))
+	static := http.FileServerFS(sub)
+	// Embedded files carry no modification time, so without this a browser
+	// keeps the previous UI after an upgrade.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		static.ServeHTTP(w, r)
+	})
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/status", s.auth(s.status))

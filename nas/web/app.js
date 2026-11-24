@@ -3,11 +3,18 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const VIEWS = ['overview', 'proxies', 'profiles', 'connections', 'logs', 'config'];
   const modeName = { rule: '规则', global: '全局', direct: '直连' };
-  let cur = 'overview', connQ = '', logLv = 'all', logPaused = false, drawer = null, busy = false, tt;
+  let curGroup = '', cur = 'overview', connQ = '', logLv = 'all', logPaused = false, drawer = null, busy = false, tt;
   const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 2600); };
   const copy = (txt, msg) => M.copy(txt, ok => toast(ok ? msg : '复制失败，请手动选中复制'));
   const lat = (d, t) => t ? '<span class="spin" aria-label="测速中"></span>' : `<span class="lat ${M.latClass(d)}">${M.latText(d)}</span>`;
-  const mainGroup = () => S.groups.find(g => g.type === 'Selector') || S.groups[0];
+  const mainGroup = () => S.groups.find(g => g.type === 'Selector' && g.name !== 'GLOBAL') || S.groups[0];
+  const PICKABLE = new Set(['Selector', 'URLTest', 'Fallback']);
+  function groupNote(g) {
+    if (g.name === 'GLOBAL') return '全局模式下所有流量走这里';
+    if (g.type === 'Selector') return '手动选择';
+    if (g.fixed) return g.fixed === g.now ? `已固定，${g.note}已暂停` : `已固定为 ${esc(g.fixed)}，它当前不可用，暂时改用其他节点`;
+    return '自动 · ' + g.note + (PICKABLE.has(g.type) ? '，点节点可固定' : '');
+  }
   async function act(fn, okMsg) {
     try { await fn(); if (okMsg) toast(okMsg); } catch (e) { if (e.status !== 401) toast(e.message || '操作失败'); }
   }
@@ -59,12 +66,14 @@
     },
     proxies() {
       if (!S.groups.length) return `<div class="head"><div><h1>代理</h1></div></div><div class="card empty">还没有可用的代理组。先到<a href="#profiles">订阅</a>添加一个订阅。</div>`;
+      const g = S.groups.find(x => x.name === curGroup) || mainGroup(); curGroup = g.name;
       return `<div class="head"><div><h1>代理</h1><p class="sub">当前模式：${modeName[S.mode]}${S.mode === 'direct' ? '，所有流量直连，节点选择不生效' : ''}</p></div>
         <button class="btn" data-test-all>全部测速</button></div>
-      ${S.groups.map(g => `<section class="card" aria-label="${esc(g.name)}"><div class="card-h"><div><h2>${esc(g.name)}</h2><div class="label">${g.type === 'Selector' ? '手动选择' : '自动 · ' + g.note} · 当前 <b style="color:var(--ink);font-weight:600">${esc(g.now)}</b></div></div>
-        <button class="btn sm pearl" data-test-group="${esc(g.name)}">测速</button></div>
-        <div class="nodes">${g.all.map(n => { const nd = S.byName[n]; const isGroup = S.groups.some(x => x.name === n); return `<button class="node" aria-pressed="${g.now === n}" data-g="${esc(g.name)}" data-n="${esc(n)}" ${g.type !== 'Selector' ? 'disabled' : ''}>
-          <span class="n">${esc(n)}</span><span class="m"><span>${nd ? nd.type : (n === 'DIRECT' ? '直连' : n === 'REJECT' ? '拒绝' : isGroup ? '策略组' : '')}</span>${nd ? lat(nd.delay, nd.testing) : ''}</span></button>`; }).join('')}</div></section>`).join('')}`;
+      <div class="gtabs" role="tablist" aria-label="策略组">${S.groups.map(x => `<button role="tab" aria-selected="${x.name === g.name}" data-gtab="${esc(x.name)}"><span class="gt-n">${esc(x.name)}</span><span class="gt-v">${esc(x.now)}</span></button>`).join('')}</div>
+      ${[g].map(g => `<section class="card" aria-label="${esc(g.name)}"><div class="card-h"><div><h2>${esc(g.name)}</h2><div class="label">${groupNote(g)} · 当前 <b style="color:var(--ink);font-weight:600">${esc(g.now)}</b></div></div>
+        <div style="display:flex;gap:8px">${g.fixed ? `<button class="btn sm ghost" data-unfix="${esc(g.name)}">恢复自动</button>` : ''}<button class="btn sm pearl" data-test-group="${esc(g.name)}">测速</button></div></div>
+        <div class="nodes">${g.all.map(n => { const nd = S.byName[n]; const isGroup = S.groups.some(x => x.name === n); return `<button class="node" aria-pressed="${g.now === n}" data-g="${esc(g.name)}" data-n="${esc(n)}" ${PICKABLE.has(g.type) ? '' : 'disabled'}>
+          <span class="n">${esc(n)}</span><span class="m"><span>${nd ? nd.type : (n === 'DIRECT' ? '直连' : n === 'REJECT' ? '拒绝' : isGroup ? '策略组 · ' + esc((S.groups.find(x => x.name === n) || {}).now || '') : '')}</span>${nd ? lat(nd.delay, nd.testing) : isGroup ? `<span class="enter" data-gtab="${esc(n)}">查看 ›</span>` : ''}</span></button>`; }).join('')}</div></section>`).join('')}`;
     },
     profiles() {
       return `<div class="head"><div><h1>订阅</h1><p class="sub">订阅按设定间隔在后台自动更新，NAS 重启后照常继续</p></div><button class="btn" data-add>添加订阅</button></div>
@@ -187,12 +196,15 @@
   }
 
   document.addEventListener('click', e => {
+    const gt = e.target.closest('[data-gtab]');
+    if (gt) { curGroup = gt.dataset.gtab; render(); return; }
     const t = e.target.closest('button,[data-dclose]'); if (!t) return; const d = t.dataset;
     if (d.dclose !== undefined && (e.target === t || t.tagName === 'BUTTON')) { drawer = null; render(); return; }
     if (d.act === 'run') act(() => M.toggleRun(), S.running ? '内核已暂停' : '内核已启动');
     else if (d.mode) act(() => M.setMode(d.mode), '已切换为' + modeName[d.mode] + '模式');
     else if (d.copy) copy(d.copy, '已复制');
     else if (d.g && d.n) act(() => M.select(d.g, d.n), `${d.g} → ${d.n}`);
+    else if (d.unfix) act(() => M.unfix(d.unfix), `${d.unfix} 已恢复自动选择`);
     else if (d.testGroup !== undefined) M.test(S.groups.find(g => g.name === d.testGroup).all);
     else if (t.hasAttribute('data-test-all')) M.test(S.nodes.map(n => n.name));
     else if (d.upd) act(() => M.updateProfile(d.upd), '订阅已更新');

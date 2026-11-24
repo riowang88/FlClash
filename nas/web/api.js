@@ -53,9 +53,11 @@
   async function loadProxies() {
     const { proxies } = await req('GET', '/api/core/proxies');
     const order = (proxies.GLOBAL && proxies.GLOBAL.all) || Object.keys(proxies);
-    const groups = order.filter(n => proxies[n] && GROUP_TYPES.has(proxies[n].type)).map(n => {
+    const names = order.filter(n => proxies[n] && GROUP_TYPES.has(proxies[n].type));
+    if (S.mode === 'global' && proxies.GLOBAL) names.unshift('GLOBAL');
+    const groups = names.map(n => {
       const g = proxies[n];
-      return { name: n, type: g.type, now: g.now || '', all: g.all || [], note: g.type === 'URLTest' ? '自动选最快' : g.type === 'Fallback' ? '故障时自动切换' : g.type === 'LoadBalance' ? '负载均衡' : '' };
+      return { name: n, type: g.type, now: g.now || '', fixed: g.fixed || '', all: g.all || [], note: g.type === 'URLTest' ? '自动选最快' : g.type === 'Fallback' ? '故障时自动切换' : g.type === 'LoadBalance' ? '负载均衡' : '' };
     });
     const seen = new Set(), nodes = [];
     groups.forEach(g => g.all.forEach(n => {
@@ -141,9 +143,10 @@
       for (let i = 0; i < 5; i++) { const g = S.groups.find(x => x.name === cur); if (!g || !g.now) break; chain.push(g.now); cur = g.now; }
       return chain;
     },
-    async setMode(m) { await req('POST', '/api/mode', { mode: m }); S.mode = m; emit('mode'); },
+    async setMode(m) { await req('POST', '/api/mode', { mode: m }); S.mode = m; await loadProxies(); emit('mode'); },
     async toggleRun() { await req('POST', '/api/running', { running: !S.running }); S.running = !S.running; emit('run'); },
-    async select(group, name) { await req('PUT', `/api/core/proxies/${enc(group)}`, { name }); const g = S.groups.find(x => x.name === group); if (g) g.now = name; emit('select'); },
+    async select(group, name) { await req('PUT', `/api/core/proxies/${enc(group)}`, { name }); await loadProxies(); emit('select'); },
+    async unfix(group) { await req('DELETE', `/api/core/proxies/${enc(group)}`); await loadProxies(); emit('select'); },
     test(names) {
       const url = enc((S.settings && S.settings.testUrl) || 'https://www.gstatic.com/generate_204');
       let i = 0; const queue = names.filter(n => S.byName[n]);
