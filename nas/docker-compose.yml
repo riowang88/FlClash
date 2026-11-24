@@ -1,0 +1,18 @@
+# 群晖 Container Manager：项目 → 新增 → 上传此文件。
+# 先停掉原来的 clash 和 clash-yacd 两个容器，避免 7890 端口冲突。
+services:
+  flclash-nas:
+    image: ghcr.io/riowang88/flclash-nas:latest
+    container_name: flclash-nas
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # 管理界面
+      - "7890:7890"   # 代理端口（HTTP + SOCKS5），在界面里改端口时这里同步改
+    volumes:
+      - ./data:/data  # 订阅、设置、规则数据都在这里
+    environment:
+      TZ: Asia/Shanghai
+      # 首次启动时设置访问密码；之后在界面里修改
+      # FLCLASH_PASSWORD: change-me
+      # 首次启动时自动导入的订阅链接
+      # FLCLASH_SUB_URL: https://...
