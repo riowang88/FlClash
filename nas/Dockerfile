@@ -17,10 +17,19 @@ RUN cd nas && \
       -ldflags "-s -w -X main.appVersion=${VERSION}" \
       -o /out/flclash-nas .
 
+# Bundled so a first start never waits on a slow geo download from the NAS.
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS geo
+ARG GEO_BASE=https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest
+RUN mkdir /geo && cd /geo && \
+    wget -q -O Country.mmdb "$GEO_BASE/country.mmdb" && \
+    wget -q -O GeoSite.dat "$GEO_BASE/geosite.dat" && \
+    wget -q -O ASN.mmdb "$GEO_BASE/GeoLite2-ASN.mmdb"
+
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=build /out/flclash-nas /usr/local/bin/flclash-nas
-ENV FLCLASH_DATA=/data FLCLASH_UI_ADDR=:8080 TZ=Asia/Shanghai
+COPY --from=geo /geo /usr/share/flclash-nas/geo
+ENV FLCLASH_DATA=/data FLCLASH_UI_ADDR=:8080 FLCLASH_GEO_DIR=/usr/share/flclash-nas/geo TZ=Asia/Shanghai
 VOLUME /data
 EXPOSE 8080 7890
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1

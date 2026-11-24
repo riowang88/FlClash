@@ -31,6 +31,7 @@ func main() {
 	if err := os.MkdirAll(coreHome, 0o755); err != nil {
 		log.Fatal(err)
 	}
+	seedGeoData(env("FLCLASH_GEO_DIR", ""), coreHome)
 	C.SetHomeDir(coreHome)
 	C.SetConfig(filepath.Join(coreHome, "config.yaml"))
 
