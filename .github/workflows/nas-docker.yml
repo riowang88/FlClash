@@ -1,0 +1,75 @@
+name: nas-docker
+
+on:
+  push:
+    branches: [main, feat/nas]
+    paths: ['nas/**', 'core/Clash.Meta', '.github/workflows/nas-docker.yml']
+    tags: ['nas-v*']
+  pull_request:
+    paths: ['nas/**', '.github/workflows/nas-docker.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/flclash-nas
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The submodule URLs use SSH; rewrite them so a runner without a key can fetch.
+      - name: Fetch mihomo submodule
+        run: git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --depth 1 core/Clash.Meta
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: nas/go.sum
+      - name: Vet and test
+        working-directory: nas
+        run: |
+          go vet -tags with_gvisor ./...
+          go test -tags with_gvisor ./...
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch mihomo submodule
+        run: git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --depth 1 core/Clash.Meta
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=match,pattern=nas-v(.*),group=1
+            type=sha,format=short
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: nas/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

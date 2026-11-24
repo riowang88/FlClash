@@ -1,0 +1,6 @@
+*
+!core/Clash.Meta
+!nas
+core/Clash.Meta/.git
+nas/Dockerfile*
+nas/docker-compose.yml
