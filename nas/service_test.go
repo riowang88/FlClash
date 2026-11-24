@@ -24,6 +24,23 @@ func newTestService(t *testing.T) *Service {
 // testLinks avoids GEOIP/GEOSITE rules so the tests never download geo data.
 const testLinks = "proxies:\n  - {name: HK, type: trojan, server: hk.example.invalid, port: 443, password: p}\nrules:\n  - MATCH,DIRECT\n"
 
+func TestMixedPortFromEnvOnFirstStart(t *testing.T) {
+	t.Setenv("FLCLASH_MIXED_PORT", "7777")
+	dir := t.TempDir()
+	store, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := store.Snapshot().Settings.MixedPort; p != 7777 {
+		t.Fatalf("first start port = %d", p)
+	}
+	_ = store.Update(func(st *State) error { st.Settings.MixedPort = 8000; return nil })
+	again, _ := OpenStore(dir)
+	if p := again.Snapshot().Settings.MixedPort; p != 8000 {
+		t.Fatalf("saved port must win over env: %d", p)
+	}
+}
+
 func TestUseProfileRevertsOnBrokenConfig(t *testing.T) {
 	svc := newTestService(t)
 	good, err := svc.AddProfile(context.Background(), NewProfile{Name: "good", Content: testLinks})

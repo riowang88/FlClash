@@ -26,6 +26,7 @@ Open `http://<nas>:8080`, add a subscription, then point devices at
 |---|---|---|
 | `FLCLASH_DATA` | `/data` | State, subscriptions, core cache and geo data |
 | `FLCLASH_UI_ADDR` | `:8080` | Web UI listen address |
+| `FLCLASH_MIXED_PORT` | `7890` | Proxy port on first start; keep it equal to the container side of the port mapping |
 | `FLCLASH_PASSWORD` | – | Sets the UI password on first start if none is set |
 | `FLCLASH_SUB_URL` | – | Subscription imported on first start |
 

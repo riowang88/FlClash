@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -57,9 +58,13 @@ type Store struct {
 }
 
 func defaultState() State {
+	port := 7890
+	if p, err := strconv.Atoi(os.Getenv("FLCLASH_MIXED_PORT")); err == nil && p > 0 && p <= 65535 {
+		port = p
+	}
 	return State{
 		Settings: Settings{
-			MixedPort: 7890,
+			MixedPort: port,
 			AllowLan:  true,
 			LogLevel:  "info",
 			Mode:      "rule",
